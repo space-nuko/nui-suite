@@ -12,6 +12,79 @@ NODE_FILE = os.path.abspath(__file__)
 NUI_SUITE_ROOT = os.path.dirname(NODE_FILE)
 
 
+class DynamicPromptsTextEncode:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {"text": ("STRING", {"multiline": True}),
+                             "clip": ("CLIP", ),
+                             "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                             }}
+    RETURN_TYPES = ("CONDITIONING", "STRING",)
+    FUNCTION = "encode"
+
+    CATEGORY = "conditioning"
+
+    def __init__(self):
+        wildcard_dir = os.path.join(NUI_SUITE_ROOT, 'wildcards')
+        self._wildcard_manager = WildcardManager(wildcard_dir)
+        self._parser_config = ParserConfig(
+            variant_start="{",
+            variant_end="}",
+            wildcard_wrap="__"
+        )
+
+    def encode(self, text, clip, seed):
+        prompt_generator = RandomPromptGenerator(
+            self._wildcard_manager,
+            seed=seed,
+            parser_config=self._parser_config,
+            unlink_seed_from_prompt=False,
+            ignore_whitespace=False
+        )
+
+        all_prompts = prompt_generator.generate(text, 1) or [""]
+        prompt = all_prompts[0]
+
+        return ([[clip.encode(prompt), {}]], prompt, )
+
+
+class FeelingLuckyTextEncode:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {"text": ("STRING", {"multiline": True}),
+                             "clip": ("CLIP", ),
+                             "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                             }}
+    RETURN_TYPES = ("CONDITIONING","STRING",)
+    FUNCTION = "encode"
+
+    CATEGORY = "conditioning"
+
+    def __init__(self):
+        wildcard_dir = os.path.join(NUI_SUITE_ROOT, 'wildcards')
+        self._wildcard_manager = WildcardManager(wildcard_dir)
+        self._parser_config = ParserConfig(
+            variant_start="{",
+            variant_end="}",
+            wildcard_wrap="__"
+        )
+
+    def encode(self, text, clip, seed):
+        inner_generator = RandomPromptGenerator(
+            self._wildcard_manager,
+            seed=seed,
+            parser_config=self._parser_config,
+            unlink_seed_from_prompt=False,
+            ignore_whitespace=False
+        )
+        prompt_generator = FeelingLuckyGenerator(inner_generator)
+
+        all_prompts = prompt_generator.generate(text, 1) or [""]
+        prompt = all_prompts[0]
+
+        return ([[clip.encode(prompt), {}]], prompt, )
+
+
 class OutputString:
     @classmethod
     def INPUT_TYPES(cls):
@@ -32,162 +105,14 @@ class OutputString:
         return { "ui": { "string": string } }
 
 
-class DynamicPromptsTextEncode:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {"required": {"text": ("STRING", {"multiline": True}),
-                             "clip": ("CLIP", ),
-                             "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                             }}
-    RETURN_TYPES = ("CONDITIONING",)
-    FUNCTION = "encode"
-
-    CATEGORY = "conditioning"
-
-    def __init__(self):
-        wildcard_dir = os.path.join(NUI_SUITE_ROOT, 'wildcards')
-        self._wildcard_manager = WildcardManager(wildcard_dir)
-        self._parser_config = ParserConfig(
-            variant_start="{",
-            variant_end="}",
-            wildcard_wrap="__"
-        )
-
-    def encode(self, text, clip, seed):
-        prompt_generator = RandomPromptGenerator(
-            self._wildcard_manager,
-            seed=seed,
-            parser_config=self._parser_config,
-            unlink_seed_from_prompt=False,
-            ignore_whitespace=False
-        )
-
-        all_prompts = prompt_generator.generate(text, 1) or [""]
-        prompt = all_prompts[0]
-
-        return ([[clip.encode(prompt), {}]], )
-
-
-class DynamicPromptsTextGen:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {"required": {"text": ("STRING", {"multiline": True}),
-                             "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                             }}
-    RETURN_TYPES = ("STRING",)
-    FUNCTION = "generate"
-
-    CATEGORY = "prompts"
-
-    def __init__(self):
-        wildcard_dir = os.path.join(NUI_SUITE_ROOT, 'wildcards')
-        self._wildcard_manager = WildcardManager(wildcard_dir)
-        self._parser_config = ParserConfig(
-            variant_start="{",
-            variant_end="}",
-            wildcard_wrap="__"
-        )
-
-    def generate(self, text, seed):
-        prompt_generator = RandomPromptGenerator(
-            self._wildcard_manager,
-            seed=seed,
-            parser_config=self._parser_config,
-            unlink_seed_from_prompt=False,
-            ignore_whitespace=False
-        )
-
-        all_prompts = prompt_generator.generate(text, 1) or [""]
-        prompt = all_prompts[0]
-
-        return (prompt, )
-
-
-class FeelingLuckyTextEncode:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {"required": {"text": ("STRING", {"multiline": True}),
-                             "clip": ("CLIP", ),
-                             "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                             }}
-    RETURN_TYPES = ("CONDITIONING",)
-    FUNCTION = "encode"
-
-    CATEGORY = "conditioning"
-
-    def __init__(self):
-        wildcard_dir = os.path.join(NUI_SUITE_ROOT, 'wildcards')
-        self._wildcard_manager = WildcardManager(wildcard_dir)
-        self._parser_config = ParserConfig(
-            variant_start="{",
-            variant_end="}",
-            wildcard_wrap="__"
-        )
-
-    def encode(self, text, clip, seed):
-        inner_generator = RandomPromptGenerator(
-            self._wildcard_manager,
-            seed=seed,
-            parser_config=self._parser_config,
-            unlink_seed_from_prompt=False,
-            ignore_whitespace=False
-        )
-        prompt_generator = FeelingLuckyGenerator(inner_generator)
-
-        all_prompts = prompt_generator.generate(text, 1) or [""]
-        prompt = all_prompts[0]
-
-        return ([[clip.encode(prompt), {}]], )
-
-
-class FeelingLuckyTextGen:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {"required": {"text": ("STRING", {"multiline": True}),
-                             "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                             }}
-    RETURN_TYPES = ("STRING",)
-    FUNCTION = "generate"
-
-    CATEGORY = "prompts"
-
-    def __init__(self):
-        wildcard_dir = os.path.join(NUI_SUITE_ROOT, 'wildcards')
-        self._wildcard_manager = WildcardManager(wildcard_dir)
-        self._parser_config = ParserConfig(
-            variant_start="{",
-            variant_end="}",
-            wildcard_wrap="__"
-        )
-
-    def generate(self, text, seed):
-        inner_generator = RandomPromptGenerator(
-            self._wildcard_manager,
-            seed=seed,
-            parser_config=self._parser_config,
-            unlink_seed_from_prompt=False,
-            ignore_whitespace=False
-        )
-        prompt_generator = FeelingLuckyGenerator(inner_generator)
-
-        all_prompts = prompt_generator.generate(text, 1) or [""]
-        prompt = all_prompts[0]
-
-        return (prompt, )
-
-
 NODE_CLASS_MAPPINGS = {
-    "Nui_OutputString": OutputString,
     "Nui_DynamicPromptsTextEncode": DynamicPromptsTextEncode,
-    "Nui_DynamicPromptsTextGen": DynamicPromptsTextGen,
     "Nui_FeelingLuckyTextEncode": FeelingLuckyTextEncode,
-    "Nui_FeelingLuckyTextGen": FeelingLuckyTextGen,
+    "Nui_OutputString": OutputString,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Nui_OutputString": "Output String",
     "Nui_DynamicPromptsTextEncode": "Dynamic Prompts Text Encode",
-    "Nui_DynamicPromptsTextGen": "Dynamic Prompts Text Gen",
     "Nui_FeelingLuckyTextEncode": "Feeling Lucky Text Encode",
-    "Nui_FeelingLuckyTextGen": "Feeling Lucky Text Gen",
+    "Nui_OutputString": "Output String",
 }
