@@ -99,20 +99,20 @@ class OutputString:
 
     OUTPUT_NODE = True
 
-    CATEGORY = "prompts"
+    CATEGORY = "utils"
 
     def output_string(self, string):
         return { "ui": { "string": string } }
 
 
 NODE_CLASS_MAPPINGS = {
-    "Nui_DynamicPromptsTextEncode": DynamicPromptsTextEncode,
-    "Nui_FeelingLuckyTextEncode": FeelingLuckyTextEncode,
-    "Nui_OutputString": OutputString,
+    "Nui.DynamicPromptsTextEncode": DynamicPromptsTextEncode,
+    "Nui.FeelingLuckyTextEncode": FeelingLuckyTextEncode,
+    "Nui.OutputString": OutputString,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Nui_DynamicPromptsTextEncode": "Dynamic Prompts Text Encode",
-    "Nui_FeelingLuckyTextEncode": "Feeling Lucky Text Encode",
-    "Nui_OutputString": "Output String",
+    "Nui.DynamicPromptsTextEncode": "Dynamic Prompts Text Encode",
+    "Nui.FeelingLuckyTextEncode": "Feeling Lucky Text Encode",
+    "Nui.OutputString": "Output String",
 }
