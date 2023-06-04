@@ -7,6 +7,8 @@ import numpy as np
 from torchvision import transforms
 from resize_right import resize
 from einops import rearrange
+import clip
+import torchviz
 
 from comfy.sample import broadcast_cond, load_additional_models, cleanup_additional_models, prepare_mask
 import comfy.k_diffusion as k_diffusion
@@ -65,13 +67,13 @@ def decode(vae, samples_in):
     batch_number = int((free_memory * 0.7) / (2562 * samples_in.shape[2] * samples_in.shape[3] * 64))
     batch_number = max(1, batch_number)
 
-    pixel_samples = torch.empty((samples_in.shape[0], 3, round(samples_in.shape[2] * 8), round(samples_in.shape[3] * 8)), device="cpu")
+    pixel_samples = torch.empty((samples_in.shape[0], 3, round(samples_in.shape[2] * 8), round(samples_in.shape[3] * 8)), device=vae.device)
     for x in range(0, samples_in.shape[0], batch_number):
         samples = samples_in[x:x+batch_number].to(vae.device)
-        pixel_samples[x:x+batch_number] = torch.clamp((vae.first_stage_model.decode(1. / vae.scale_factor * samples) + 1.0) / 2.0, min=0.0, max=1.0).cpu()
+        pixel_samples[x:x+batch_number] = torch.clamp((vae.first_stage_model.decode(1. / vae.scale_factor * samples) + 1.0) / 2.0, min=0.0, max=1.0)
 
     vae.first_stage_model = vae.first_stage_model.cpu()
-    pixel_samples = pixel_samples.cpu().movedim(1,-1)
+    pixel_samples = pixel_samples.movedim(1,-1)
     return pixel_samples
 
 
@@ -113,15 +115,31 @@ def decode(vae, samples_in):
         pxsmps.append(px.cpu().float().movedim(1, -1))
         smps.append(samples)
 
-    vae.first_stage_model = vae.first_stage_model.cpu()
+    # vae.first_stage_model = vae.first_stage_model.cpu()
     # pixel_samples = pixel_samples.cpu().movedim(1,-1)
     return (pxsmps, smps)
 
 
-class CLIPGuidedNoisePredictor(torch.nn.Module):
-    def __init__(self, pred, vae, clip, clip_vision, clip_target_embed, clip_scale):
+class CLIPFeatureExtractor(torch.nn.Module):
+    def __init__(self, name='ViT-L/14@336px', device='cpu'):
         super().__init__()
-        from pprint import pp
+        self.model = clip.load(name, device=device)[0].eval().requires_grad_(False)
+        self.normalize = transforms.Normalize(mean=(0.48145466, 0.4578275, 0.40821073),
+                                              std=(0.26862954, 0.26130258, 0.27577711))
+        self.size = (self.model.visual.input_resolution, self.model.visual.input_resolution)
+
+    def forward(self, x):
+        if x.shape[2:4] != self.size:
+            x = resize(x.add(1).div(2), out_shape=self.size, pad_mode='reflect').clamp(0, 1)
+        x = self.normalize(x)
+        x = self.model.encode_image(x).float()
+        x = F.normalize(x) * x.shape[1] ** 0.5
+        return x
+
+
+class CLIPGuidedNoisePredictor(torch.nn.Module):
+    def __init__(self, pred, vae, clip, clip_vision, clip_target_embed, clip_scale, device):
+        super().__init__()
         self.inner_pred = pred
         self.vae = vae
         self.clip = clip
@@ -134,15 +152,14 @@ class CLIPGuidedNoisePredictor(torch.nn.Module):
         self.alphas_cumprod = self.inner_pred.alphas_cumprod
         cutn = 4
         self.make_cutouts = MakeCutouts(clip_size, cutn)
-
-        from comfy.k_diffusion.evaluation import CLIPFeatureExtractor
-        self.clip2 = CLIPFeatureExtractor("ViT-L/14@336px")
+        self.clip2 = CLIPFeatureExtractor("ViT-L/14@336px", device)
 
     def apply_model(self, x, timestep, cond, uncond, cond_scale, cond_concat=None, model_options={}):
         print("apply_model")
         print(x.grad_fn)
         with torch.enable_grad():
-            x = x.detach().requires_grad_(True)
+            device = comfy.model_management.get_torch_device()
+            x = x.detach().requires_grad_(True).to(device)
             print("================================")
             denoised = self.inner_pred.apply_model(x, timestep, cond, uncond, cond_scale, cond_concat=cond_concat, model_options=model_options).requires_grad_(True)
             print(x.grad_fn)
@@ -160,7 +177,7 @@ class CLIPGuidedNoisePredictor(torch.nn.Module):
     def cond_fn(self, x, denoised, target_embed):
         device = denoised.device
         pxsmps, smps = decode(self.vae, denoised)
-        decoded = pxsmps[0]
+        decoded = pxsmps[0].to(device)
         x_in = smps[0]
 
         print("1________________")
@@ -168,6 +185,8 @@ class CLIPGuidedNoisePredictor(torch.nn.Module):
         print(x_in.grad_fn)
         print(decoded.shape)
         print(decoded.grad_fn)
+        print(denoised.get_device())
+        print(decoded.get_device())
         print("2________________")
 
         # import torchviz
@@ -198,7 +217,12 @@ class CLIPGuidedNoisePredictor(torch.nn.Module):
         # cutouts = self.make_cutouts(decoded)
 
         # image_embed = self.get_image_embed(clamped)
+        print(x.get_device())
+        print(x_in.get_device())
+        print(clamped.get_device())
+        print(target_embed.get_device())
         image_embed = self.clip2(clamped)
+        print(image_embed.get_device())
 
         # dot = torchviz.make_dot(image_embed, params=dict(self.clip_vision.model.named_parameters()))
         # with open("dot_image_embed.dot", "w") as f:
@@ -222,12 +246,13 @@ class CLIPGuidedNoisePredictor(torch.nn.Module):
         print(loss)
         print(loss.shape)
         print(loss.grad_fn)
+        print(loss.get_device())
         print("x")
         print(x_in.shape)
         print(x_in.grad_fn)
+        print(x_in.get_device())
         print("------------------")
         from pprint import pp
-        pp(self.inner_pred.inner_model)
         dot = torchviz.make_dot(x, params=dict(self.inner_pred.inner_model.named_parameters()))
         with open("dot_x.dot", "w") as f:
             f.write(str(dot))
@@ -237,7 +262,8 @@ class CLIPGuidedNoisePredictor(torch.nn.Module):
         dot = torchviz.make_dot(loss, params=dict(self.inner_pred.inner_model.named_parameters()))
         with open("dot_loss.dot", "w") as f:
             f.write(str(dot))
-        grad = -torch.autograd.grad(loss, x_in)[0]
+        d= comfy.model_management.get_torch_device()
+        grad = -torch.autograd.grad(loss.to(d), x_in.to(d))[0]
 
         return grad
 
@@ -276,10 +302,10 @@ def sample(model, noise, steps, cfg, sampler_name, scheduler, positive, negative
     sampler = comfy.samplers.KSampler(real_model, steps=steps, device=device, sampler=sampler_name, scheduler=scheduler, denoise=denoise, model_options=model.model_options)
 
     clip_encoded = clip.encode(clip_prompt)
-    clip_target_embed = F.normalize(clip_encoded.float())
+    clip_target_embed = F.normalize(clip_encoded.float()).to(device)
 
     cfg_pred = comfy.samplers.CFGNoisePredictor(sampler.model)
-    sampler.model_denoise = CLIPGuidedNoisePredictor(cfg_pred, vae, clip, clip_vision, clip_target_embed, clip_scale)
+    sampler.model_denoise = CLIPGuidedNoisePredictor(cfg_pred, vae, clip, clip_vision, clip_target_embed, clip_scale, device)
     if sampler.model.parameterization == "v":
         sampler.model_wrap = comfy.samplers.CompVisVDenoiser(sampler.model_denoise, quantize=True)
     else:
