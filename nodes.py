@@ -6,20 +6,22 @@ from dynamicprompts.generators import (
 )
 from dynamicprompts.parser.parse import ParserConfig
 from dynamicprompts.wildcards.wildcard_manager import WildcardManager
+import comfy.samplers
+
+from .clip_guidance import common_ksampler
 
 
 NODE_FILE = os.path.abspath(__file__)
 NUI_SUITE_ROOT = os.path.dirname(NODE_FILE)
 
 
-class DynamicPromptsTextEncode:
+class DynamicPromptsTextGen:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {"text": ("STRING", {"multiline": True}),
-                             "clip": ("CLIP", ),
                              "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                              }}
-    RETURN_TYPES = ("CONDITIONING", "STRING",)
+    RETURN_TYPES = ("STRING",)
     FUNCTION = "encode"
 
     CATEGORY = "conditioning"
@@ -33,7 +35,7 @@ class DynamicPromptsTextEncode:
             wildcard_wrap="__"
         )
 
-    def encode(self, text, clip, seed):
+    def encode(self, text, seed):
         prompt_generator = RandomPromptGenerator(
             self._wildcard_manager,
             seed=seed,
@@ -45,17 +47,16 @@ class DynamicPromptsTextEncode:
         all_prompts = prompt_generator.generate(text, 1) or [""]
         prompt = all_prompts[0]
 
-        return ([[clip.encode(prompt), {}]], prompt, )
+        return (prompt, )
 
 
-class FeelingLuckyTextEncode:
+class FeelingLuckyTextGen:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {"text": ("STRING", {"multiline": True}),
-                             "clip": ("CLIP", ),
                              "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                              }}
-    RETURN_TYPES = ("CONDITIONING","STRING",)
+    RETURN_TYPES = ("STRING",)
     FUNCTION = "encode"
 
     CATEGORY = "conditioning"
@@ -69,7 +70,7 @@ class FeelingLuckyTextEncode:
             wildcard_wrap="__"
         )
 
-    def encode(self, text, clip, seed):
+    def encode(self, text, seed):
         inner_generator = RandomPromptGenerator(
             self._wildcard_manager,
             seed=seed,
@@ -82,7 +83,37 @@ class FeelingLuckyTextEncode:
         all_prompts = prompt_generator.generate(text, 1) or [""]
         prompt = all_prompts[0]
 
-        return ([[clip.encode(prompt), {}]], prompt, )
+        return (prompt, )
+
+
+class ClipGuidedKSampler:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"model": ("MODEL",),
+                    "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                    "steps": ("INT", {"default": 20, "min": 1, "max": 10000}),
+                    "cfg": ("FLOAT", {"default": 8.0, "min": 0.0, "max": 100.0}),
+                    "sampler_name": (comfy.samplers.KSampler.SAMPLERS, ),
+                    "scheduler": (comfy.samplers.KSampler.SCHEDULERS, ),
+                    "positive": ("CONDITIONING", ),
+                    "negative": ("CONDITIONING", ),
+                    "latent_image": ("LATENT", ),
+                    "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                    "vae": ("VAE", ),
+                    "clip": ("CLIP", ),
+                    "clip_vision": ("CLIP_VISION", ),
+                    "clip_prompt": ("STRING", {"multiline": True}),
+                    "clip_scale": ("FLOAT", {"default": 500.0, "min": 0.0, "max": 10000.0, "step": 10.0}),
+                    }}
+
+    RETURN_TYPES = ("LATENT",)
+    FUNCTION = "sample"
+
+    CATEGORY = "sampling"
+
+    def sample(self, model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, vae, clip, clip_vision, clip_prompt, clip_scale, denoise=1.0):
+        return common_ksampler(model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, vae, clip, clip_vision, clip_prompt, clip_scale, denoise=denoise)
 
 
 class OutputString:
@@ -99,20 +130,22 @@ class OutputString:
 
     OUTPUT_NODE = True
 
-    CATEGORY = "prompts"
+    CATEGORY = "utils"
 
     def output_string(self, string):
         return { "ui": { "string": string } }
 
 
 NODE_CLASS_MAPPINGS = {
-    "Nui_DynamicPromptsTextEncode": DynamicPromptsTextEncode,
-    "Nui_FeelingLuckyTextEncode": FeelingLuckyTextEncode,
-    "Nui_OutputString": OutputString,
+    "Nui.DynamicPromptsTextGen": DynamicPromptsTextGen,
+    "Nui.FeelingLuckyTextGen": FeelingLuckyTextGen,
+    "Nui.ClipGuidedKSampler": ClipGuidedKSampler,
+    "Nui.OutputString": OutputString,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Nui_DynamicPromptsTextEncode": "Dynamic Prompts Text Encode",
-    "Nui_FeelingLuckyTextEncode": "Feeling Lucky Text Encode",
-    "Nui_OutputString": "Output String",
+    "Nui.DynamicPromptsTextEncode": "Dynamic Prompts Text Generator",
+    "Nui.FeelingLuckyTextEncode": "Feeling Lucky Text Generator",
+    "Nui.ClipGuidedKSampler": "CLIP Guided KSampler",
+    "Nui.OutputString": "Output String",
 }
