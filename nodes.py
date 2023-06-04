@@ -12,14 +12,13 @@ NODE_FILE = os.path.abspath(__file__)
 NUI_SUITE_ROOT = os.path.dirname(NODE_FILE)
 
 
-class DynamicPromptsTextEncode:
+class DynamicPromptsTextGen:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {"text": ("STRING", {"multiline": True}),
-                             "clip": ("CLIP", ),
                              "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                              }}
-    RETURN_TYPES = ("CONDITIONING", "STRING",)
+    RETURN_TYPES = ("STRING",)
     FUNCTION = "encode"
 
     CATEGORY = "conditioning"
@@ -33,7 +32,7 @@ class DynamicPromptsTextEncode:
             wildcard_wrap="__"
         )
 
-    def encode(self, text, clip, seed):
+    def encode(self, text, seed):
         prompt_generator = RandomPromptGenerator(
             self._wildcard_manager,
             seed=seed,
@@ -45,17 +44,16 @@ class DynamicPromptsTextEncode:
         all_prompts = prompt_generator.generate(text, 1) or [""]
         prompt = all_prompts[0]
 
-        return ([[clip.encode(prompt), {}]], prompt, )
+        return (prompt, )
 
 
-class FeelingLuckyTextEncode:
+class FeelingLuckyTextGen:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {"text": ("STRING", {"multiline": True}),
-                             "clip": ("CLIP", ),
                              "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                              }}
-    RETURN_TYPES = ("CONDITIONING","STRING",)
+    RETURN_TYPES = ("STRING",)
     FUNCTION = "encode"
 
     CATEGORY = "conditioning"
@@ -69,7 +67,7 @@ class FeelingLuckyTextEncode:
             wildcard_wrap="__"
         )
 
-    def encode(self, text, clip, seed):
+    def encode(self, text, seed):
         inner_generator = RandomPromptGenerator(
             self._wildcard_manager,
             seed=seed,
@@ -82,7 +80,7 @@ class FeelingLuckyTextEncode:
         all_prompts = prompt_generator.generate(text, 1) or [""]
         prompt = all_prompts[0]
 
-        return ([[clip.encode(prompt), {}]], prompt, )
+        return (prompt, )
 
 
 class OutputString:
@@ -106,13 +104,13 @@ class OutputString:
 
 
 NODE_CLASS_MAPPINGS = {
-    "Nui.DynamicPromptsTextEncode": DynamicPromptsTextEncode,
-    "Nui.FeelingLuckyTextEncode": FeelingLuckyTextEncode,
+    "Nui.DynamicPromptsTextGen": DynamicPromptsTextGen,
+    "Nui.FeelingLuckyTextGen": FeelingLuckyTextGen,
     "Nui.OutputString": OutputString,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Nui.DynamicPromptsTextEncode": "Dynamic Prompts Text Encode",
-    "Nui.FeelingLuckyTextEncode": "Feeling Lucky Text Encode",
+    "Nui.DynamicPromptsTextEncode": "Dynamic Prompts Text Generator",
+    "Nui.FeelingLuckyTextEncode": "Feeling Lucky Text Generator",
     "Nui.OutputString": "Output String",
 }
